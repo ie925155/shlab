@@ -85,6 +85,18 @@ void app_error(char *msg);
 typedef void handler_t(int);
 handler_t *Signal(int signum, handler_t *handler);
 
+pid_t Fork(void);
+int builtin_command(char **argv);
+
+pid_t Fork(void)
+{
+    pid_t pid;
+
+    if((pid = fork()) < 0)
+        unix_error("Fork error");
+    return pid;
+}
+
 /*
  * main - The shell's main routine
  */
@@ -170,6 +182,30 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline)
 {
+    char *argv[MAXARGS];
+    char buf[MAXLINE];
+    int bg;
+    pid_t pid;
+
+    strcpy(buf, cmdline);
+    bg = parseline(buf, argv);
+    if(argv[0] == NULL)
+        return;
+    if(!builtin_cmd(argv)){
+        if((pid = Fork()) == 0){
+            if(execve(argv[0], argv, environ) < 0){
+                printf("%s Command not found.\n", argv[0]);
+                exit(0);
+            }
+        }
+        if(!bg){
+            int status;
+            if(waitpid(pid, &status, 0) < 0)
+                unix_error("waitfg: waitpid error");
+        }
+        else
+            printf("%d %s", pid, cmdline);
+    }
     return;
 }
 
@@ -242,6 +278,27 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv)
 {
+    if(!strcmp(argv[0], "quit"))
+        exit(0);
+    if(!strcmp(argv[0], "&"))
+        return 1;
+    if(!strcmp(argv[0], "jobs"))
+    {
+      listjobs(jobs);
+      return 1;
+    }
+    if(!strcmp(argv[0], "bg"))
+    {
+      return 1;
+    }
+    if(!strcmp(argv[0], "fg"))
+    {
+      return 1;
+    }
+    if(!strcmp(argv[0], "kill"))
+    {
+      return 1;
+    }
     return 0; /* not a builtin command */
 }
 
