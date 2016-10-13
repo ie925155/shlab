@@ -87,15 +87,7 @@ handler_t *Signal(int signum, handler_t *handler);
 
 pid_t Fork(void);
 int builtin_command(char **argv);
-
-pid_t Fork(void)
-{
-    pid_t pid;
-
-    if((pid = fork()) < 0)
-        unix_error("Fork error");
-    return pid;
-}
+void stop_process(pid_t pid);
 
 /*
  * main - The shell's main routine
@@ -186,6 +178,10 @@ void eval(char *cmdline)
     char buf[MAXLINE];
     int bg;
     pid_t pid;
+    //sigset_t mask_all, prev_all;
+
+    //sigfillset(&mask_all);
+
 
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
@@ -198,9 +194,10 @@ void eval(char *cmdline)
                 exit(0);
             }
         }
+        addjob(jobs, pid, (!bg) ? FG : BG, cmdline);
         if(!bg){
             int status;
-            if(waitpid(pid, &status, 0) < 0)
+            if(waitpid(pid, &status, WUNTRACED) < 0)
                 unix_error("waitfg: waitpid error");
         }
         else
@@ -287,12 +284,9 @@ int builtin_cmd(char **argv)
       listjobs(jobs);
       return 1;
     }
-    if(!strcmp(argv[0], "bg"))
+    if(!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg"))
     {
-      return 1;
-    }
-    if(!strcmp(argv[0], "fg"))
-    {
+      do_bgfg(argv);
       return 1;
     }
     if(!strcmp(argv[0], "kill"))
@@ -307,6 +301,14 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv)
 {
+    if(!strcmp(argv[0], "bg")) //case of bg
+    {
+
+    }
+    else //case of fg
+    {
+
+    }
     return;
 }
 
@@ -331,6 +333,8 @@ void waitfg(pid_t pid)
  */
 void sigchld_handler(int sig)
 {
+  int olderrno = errno;
+  sigset_t mask_all, prev_all;
     return;
 }
 
@@ -351,6 +355,11 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
+    int olderrno = errno;
+    pid_t fg_pid = fgpid(jobs);
+    stop_process(fg_pid);
+    listjobs(jobs);
+    errno = olderrno;
     return;
 }
 
@@ -583,4 +592,22 @@ void sigquit_handler(int sig)
 {
     printf("Terminating after receipt of SIGQUIT signal\n");
     exit(1);
+}
+
+pid_t Fork(void)
+{
+    pid_t pid;
+
+    if((pid = fork()) < 0)
+        unix_error("Fork error");
+    return pid;
+}
+
+void stop_process(pid_t pid)
+{
+  int i;
+  for(i = 0; i< MAXJOBS; i++){
+      if(pid == jobs[i].pid)
+        jobs[i].state = ST;
+  }
 }
