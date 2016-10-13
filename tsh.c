@@ -87,7 +87,7 @@ handler_t *Signal(int signum, handler_t *handler);
 
 pid_t Fork(void);
 int builtin_command(char **argv);
-void stop_process(pid_t pid);
+void process_state_change(pid_t pid, int state);
 
 /*
  * main - The shell's main routine
@@ -195,13 +195,10 @@ void eval(char *cmdline)
             }
         }
         addjob(jobs, pid, (!bg) ? FG : BG, cmdline);
-        if(!bg){
-            int status;
-            if(waitpid(pid, &status, WUNTRACED) < 0)
-                unix_error("waitfg: waitpid error");
-        }
+        if(!bg)
+          waitfg(pid);
         else
-            printf("%d %s", pid, cmdline);
+          printf("%d %s", pid, cmdline);
     }
     return;
 }
@@ -275,25 +272,25 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv)
 {
-    if(!strcmp(argv[0], "quit"))
-        exit(0);
-    if(!strcmp(argv[0], "&"))
-        return 1;
-    if(!strcmp(argv[0], "jobs"))
-    {
-      listjobs(jobs);
+  if(!strcmp(argv[0], "quit"))
+      exit(0);
+  if(!strcmp(argv[0], "&"))
       return 1;
-    }
-    if(!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg"))
-    {
-      do_bgfg(argv);
-      return 1;
-    }
-    if(!strcmp(argv[0], "kill"))
-    {
-      return 1;
-    }
-    return 0; /* not a builtin command */
+  if(!strcmp(argv[0], "jobs"))
+  {
+    listjobs(jobs);
+    return 1;
+  }
+  if(!strcmp(argv[0], "bg") || !strcmp(argv[0], "fg"))
+  {
+    do_bgfg(argv);
+    return 1;
+  }
+  if(!strcmp(argv[0], "kill"))
+  {
+    return 1;
+  }
+  return 0; /* not a builtin command */
 }
 
 /*
@@ -301,15 +298,42 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv)
 {
-    if(!strcmp(argv[0], "bg")) //case of bg
-    {
-
-    }
-    else //case of fg
-    {
-
-    }
+  if(argv[1] == NULL)
+  {
+    fprintf(stdout, "%s\n", "fg command requires PID or %jobid argument");
     return;
+  }
+  if(!strcmp(argv[0], "bg")) //case of bg
+  {
+
+  }
+  else //case of fg
+  {
+    int id;
+    struct job_t *job;
+    //last in first out
+    if(argv[1][0] == '%')
+    {
+      id = atoi(&argv[1][1]);
+      job = getjobjid(jobs, id);
+    }
+    else
+    {
+      id = atoi(argv[1]);
+      job = getjobpid(jobs, id);
+    }
+    if(job == NULL)
+    {
+      fprintf(stdout, "%s\n", "No such pid or job process");
+      return;
+    }
+    fprintf(stdout, "%s pid=%d job->state=%d\n ", __func__, job->pid, job->state);
+    if(job->state == ST)
+      kill(job->pid, SIGCONT);
+    process_state_change(job->pid, FG);
+    waitfg(job->pid);
+  }
+  return;
 }
 
 /*
@@ -317,7 +341,10 @@ void do_bgfg(char **argv)
  */
 void waitfg(pid_t pid)
 {
-    return;
+  int status;
+  if(waitpid(pid, &status, WUNTRACED) < 0)
+      unix_error("waitfg: waitpid error");
+  return;
 }
 
 /*****************
@@ -335,7 +362,7 @@ void sigchld_handler(int sig)
 {
   int olderrno = errno;
   sigset_t mask_all, prev_all;
-    return;
+  return;
 }
 
 /*
@@ -355,12 +382,14 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
-    int olderrno = errno;
-    pid_t fg_pid = fgpid(jobs);
-    stop_process(fg_pid);
-    listjobs(jobs);
-    errno = olderrno;
-    return;
+  printf("\n%s\n", __func__);
+  int olderrno = errno;
+  pid_t pid = fgpid(jobs);
+  printf("%s %d\n", __func__, pid);
+  process_state_change(pid, ST);
+  listjobs(jobs);
+  errno = olderrno;
+  return;
 }
 
 /*********************
@@ -603,11 +632,11 @@ pid_t Fork(void)
     return pid;
 }
 
-void stop_process(pid_t pid)
+void process_state_change(pid_t pid, int state)
 {
   int i;
   for(i = 0; i< MAXJOBS; i++){
       if(pid == jobs[i].pid)
-        jobs[i].state = ST;
+        jobs[i].state = state;
   }
 }
