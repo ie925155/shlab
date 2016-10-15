@@ -303,33 +303,35 @@ void do_bgfg(char **argv)
     fprintf(stdout, "%s\n", "fg command requires PID or %jobid argument");
     return;
   }
+  int id;
+  struct job_t *job;
+  //last in first out
+  if(argv[1][0] == '%')
+  {
+    id = atoi(&argv[1][1]);
+    job = getjobjid(jobs, id);
+  }
+  else
+  {
+    id = atoi(argv[1]);
+    job = getjobpid(jobs, id);
+  }
+  if(job == NULL)
+  {
+    fprintf(stdout, "%s", "No such pid or job process");
+    return;
+  }
+
+  fprintf(stdout, "%s pid=%d job->state=%d\n ", __func__, job->pid, job->state);
+  if(job->state == ST)
+    kill(job->pid, SIGCONT);
   if(!strcmp(argv[0], "bg")) //case of bg
   {
-
+    process_state_change(job->pid, BG);
+    printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
   }
   else //case of fg
   {
-    int id;
-    struct job_t *job;
-    //last in first out
-    if(argv[1][0] == '%')
-    {
-      id = atoi(&argv[1][1]);
-      job = getjobjid(jobs, id);
-    }
-    else
-    {
-      id = atoi(argv[1]);
-      job = getjobpid(jobs, id);
-    }
-    if(job == NULL)
-    {
-      fprintf(stdout, "%s\n", "No such pid or job process");
-      return;
-    }
-    fprintf(stdout, "%s pid=%d job->state=%d\n ", __func__, job->pid, job->state);
-    if(job->state == ST)
-      kill(job->pid, SIGCONT);
     process_state_change(job->pid, FG);
     waitfg(job->pid);
   }
@@ -389,7 +391,6 @@ void sigtstp_handler(int sig)
   process_state_change(pid, ST);
   listjobs(jobs);
   errno = olderrno;
-  return;
 }
 
 /*********************
