@@ -96,5 +96,3 @@ rtest16:
 # clean up
 clean:
 	rm -f $(FILES) *.o *~
-
-
